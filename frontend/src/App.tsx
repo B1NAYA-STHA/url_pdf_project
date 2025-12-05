@@ -3,20 +3,23 @@ import type { FormEvent } from "react";
 import "./App.css";
 
 function App() {
+  // State to hold the input URL
   const [url, setUrl] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
-  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Handle form submission
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!url) return;
 
     setLoading(true);
-    setPdfBlobUrl(null);
+    setPdfUrl(null);
     setError(null);
 
     try {
+      // Call FastAPI endpoint
       const res = await fetch("http://localhost:8000/generate-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -25,9 +28,11 @@ function App() {
 
       if (!res.ok) throw new Error("Failed to generate PDF.");
 
+      // Convert response to Blob and create a URL
       const blob = await res.blob();
       const fileURL = window.URL.createObjectURL(blob);
-      setPdfBlobUrl(fileURL);
+      setPdfUrl(fileURL); // Save URL for download link
+
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message);
       else setError("Something went wrong");
@@ -63,10 +68,10 @@ function App() {
 
         {error && <p className="text-red-600 mt-3 text-center">{error}</p>}
 
-        {pdfBlobUrl && (
+        {pdfUrl && (
           <div className="mt-5 text-center">
             <a
-              href={pdfBlobUrl}
+              href={pdfUrl}
               download="webpage.pdf"
               className="bg-green-600 text-white px-5 py-2 rounded-lg hover:bg-green-700 transition"
             >
