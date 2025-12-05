@@ -1,0 +1,28 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Binaya shrestha",email = "sthavicky555@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi (>=0.123.9,<0.124.0)",
+    "uvicorn (>=0.38.0,<0.39.0)",
+    "selenium (>=4.38.0,<5.0.0)",
+    "webdriver-manager (>=4.0.2,<5.0.0)",
+    "pydantic (>=2.12.5,<3.0.0)"
+]
+
+[tool.poetry]
+packages = [
+    { include = "backend" }
+]
+
+[tool.poetry.scripts]
+start = "backend.main:start"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
