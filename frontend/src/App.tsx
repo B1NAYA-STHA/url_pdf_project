@@ -3,53 +3,59 @@ import { useState } from "react";
 import "./App.css";
 
 function App() {
-	const [url, setUrl] = useState<string>("");
-	const [loading, setLoading] = useState<boolean>(false);
+	//Generate a unique user_id stored in localStorage so history persists even after server restart
+	const storedId = localStorage.getItem("user_id");
+	const [userId] = useState<string>(() => {
+		if (storedId) return storedId;
+
+		// Create new unique ID for new user 
+		const newId = crypto.randomUUID();
+		localStorage.setItem("user_id", newId);
+		return newId;
+	});
+
+	const [url, setUrl] = useState("");
+	const [loading, setLoading] = useState(false);
 	const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [history, setHistory] = useState<string[]>([]);
-	const userId = "user123"; // simple user identifier
 
+	//Handle PDF generation request
 	const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
-		if (!url) return;
-
 		setLoading(true);
-		setPdfUrl(null);
 		setError(null);
+		setPdfUrl(null);
 
 		try {
-			const res = await fetch("http://localhost:8000/generate-pdf", {
+			//Send URL + user ID to backend and saves URL in history
+			const res = await fetch("http://127.0.0.1:8000/generate-pdf", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ url, user_id: userId }),
 			});
-
 			if (!res.ok) throw new Error("Failed to generate PDF.");
 
+			//Convert backend PDF blob into downloadable file
 			const blob = await res.blob();
-			const fileURL = window.URL.createObjectURL(blob);
-			setPdfUrl(fileURL);
-		} catch (err: unknown) {
-			if (err instanceof Error) setError(err.message);
-			else setError("Something went wrong");
-		}
-		setLoading(false);
-	};
+			setPdfUrl(URL.createObjectURL(blob));
 
-	const fetchHistory = async () => {
-		try {
-			const res = await fetch(
-				`http://localhost:8000/history?user_id=${userId}`,
-			);
-			const data = await res.json();
-			setHistory(data);
+			await fetchHistory();
 		} catch (err) {
-			console.error(err);
+			setError(err instanceof Error ? err.message : "Error occurred");
+		} finally {
+			setLoading(false);
 		}
 	};
 
-	const setUrlFromHistory = (item: string) => setUrl(item);
+	//Fetch user's unique history from backend
+	const fetchHistory = async () => {
+		const res = await fetch(
+			`http://127.0.0.1:8000/history?user_id=${userId}`,
+		);
+		const data = await res.json();
+		setHistory(data);
+	};
 
 	return (
 		<div className="min-h-screen flex flex-col items-center justify-center p-6">
@@ -104,13 +110,14 @@ function App() {
 							{history.map((item) => (
 								<li
 									key={item}
-									onClick={() => setUrlFromHistory(item)}
+									onClick={() => setUrl(item)}
 									onKeyDown={(e) => {
 										if (e.key === "Enter" || e.key === " ")
-											setUrlFromHistory(item);
+											setUrl(item);
 									}}
+									tabIndex={0}
 								>
-									<span>{item}</span>
+									{item}
 								</li>
 							))}
 						</ul>

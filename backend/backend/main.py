@@ -6,12 +6,11 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
-import os, uuid, base64
-import uvicorn
+import os, uuid, base64, json, uvicorn
 
 app = FastAPI()
 
-# Enable CORS for frontend requests
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,25 +18,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# JSON file storage for history
+HISTORY_FILE = "history.json"
+
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_history():
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(search_history_store, f)
+
+search_history_store = load_history()
+
 # Request model for PDF generation
 class PDFRequest(BaseModel):
     url: str
-    user_id: str  # simple user identifier
+    user_id: str
 
-# In-memory storage for search history
-search_history_store = {}  
 
 @app.post("/generate-pdf")
 def generate_pdf(request: PDFRequest):
     url = request.url
     user_id = request.user_id
+
     if not url:
         raise HTTPException(status_code=400, detail="URL is required")
 
-    # Save history server-side
+    # Store history
     history = search_history_store.get(user_id, [])
-    history = [url] + [u for u in history if u != url]  # avoid duplicates
-    search_history_store[user_id] = history[:8]  # keep latest 8
+    history = [url] + [u for u in history if u != url]
+    search_history_store[user_id] = history[:8]
+    save_history()
 
     # Ensure folder exists
     os.makedirs("generated_pdfs", exist_ok=True)
@@ -45,7 +62,7 @@ def generate_pdf(request: PDFRequest):
     output_path = os.path.join("generated_pdfs", filename)
 
     try:
-        # Configure headless Chrome
+        # Headless Chrome config
         chrome_options = Options()
         chrome_options.add_argument("--headless=new")
         chrome_options.add_argument("--disable-gpu")
@@ -57,10 +74,10 @@ def generate_pdf(request: PDFRequest):
         )
         driver.get(url)
 
-        pdf_data = driver.execute_cdp_cmd("Page.printToPDF", {
-            "printBackground": True,
-            "format": "A4"
-        })
+        pdf_data = driver.execute_cdp_cmd(
+            "Page.printToPDF",
+            {"printBackground": True, "format": "A4"}
+        )
         driver.quit()
 
         with open(output_path, "wb") as f:
@@ -76,10 +93,10 @@ def generate_pdf(request: PDFRequest):
 
 # Endpoint to fetch search history for a user
 @app.get("/history")
-def get_history(user_id: str = Query(..., description="User identifier")):
+def get_history(user_id: str = Query(...)):
     return search_history_store.get(user_id, [])
-
 
 # Function to run FastAPI with uvicorn (used in Poetry script)
 def start():
     uvicorn.run("backend.main:app", host="127.0.0.1", port=8000, reload=True)
+
