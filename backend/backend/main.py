@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -6,9 +6,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
-import os
-import uuid
-import base64
+import os, uuid, base64
 import uvicorn
 
 app = FastAPI()
@@ -21,17 +19,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Request model for URL input
+# Request model for PDF generation
 class PDFRequest(BaseModel):
     url: str
+    user_id: str  # simple user identifier
+
+# In-memory storage for search history
+search_history_store = {}  
 
 @app.post("/generate-pdf")
 def generate_pdf(request: PDFRequest):
     url = request.url
+    user_id = request.user_id
     if not url:
         raise HTTPException(status_code=400, detail="URL is required")
 
-    os.makedirs("generated_pdfs", exist_ok=True)  # Ensure folder exists
+    # Save history server-side
+    history = search_history_store.get(user_id, [])
+    history = [url] + [u for u in history if u != url]  # avoid duplicates
+    search_history_store[user_id] = history[:8]  # keep latest 8
+
+    # Ensure folder exists
+    os.makedirs("generated_pdfs", exist_ok=True)
     filename = f"{uuid.uuid4()}.pdf"
     output_path = os.path.join("generated_pdfs", filename)
 
@@ -42,33 +51,34 @@ def generate_pdf(request: PDFRequest):
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--no-sandbox")
 
-        # Launch Chrome and navigate to URL
         driver = webdriver.Chrome(
             service=Service(ChromeDriverManager().install()),
             options=chrome_options
         )
         driver.get(url)
 
-        # Generate PDF using Chrome DevTools Protocol
         pdf_data = driver.execute_cdp_cmd("Page.printToPDF", {
             "printBackground": True,
             "format": "A4"
         })
         driver.quit()
 
-        # Save PDF to file
         with open(output_path, "wb") as f:
             f.write(base64.b64decode(pdf_data['data']))
 
-        # Return PDF as response
         return FileResponse(
             output_path,
             media_type="application/pdf",
             filename="webpage.pdf"
         )
-
     except Exception as e:
-        return HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Endpoint to fetch search history for a user
+@app.get("/history")
+def get_history(user_id: str = Query(..., description="User identifier")):
+    return search_history_store.get(user_id, [])
+
 
 # Function to run FastAPI with uvicorn (used in Poetry script)
 def start():
